@@ -2452,6 +2452,16 @@
 		)
 		(uuid "29e2e6bd-4a58-4514-b35a-b6ffba8d3d8b")
 	)
+	(text "System transmisji kodu Morse'a z wykorzystaniem modułów RF 433 MHz"
+		(exclude_from_sim no)
+		(at 222.25 189.738 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "2cba9a89-9d74-4e20-9118-ab9bc9319ac7")
+	)
 	(text "D7"
 		(exclude_from_sim no)
 		(at 87.0656 68.072 0)
@@ -2462,6 +2472,16 @@
 		)
 		(uuid "45b19f6f-3baf-4717-8093-c1a83789841e")
 	)
+	(text "Przyciski skonfigurowane jako INPUT_PULLUP\nStan niski oznacza wciśnięcie"
+		(exclude_from_sim no)
+		(at 135.382 38.354 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "4800b449-8892-42fa-9edf-9095f08d791b")
+	)
 	(text "A4"
 		(exclude_from_sim no)
 		(at 193.7456 111.252 0)
@@ -2471,6 +2491,16 @@
 			)
 		)
 		(uuid "654ff3f6-e271-43e5-b341-9e3c56e48d64")
+	)
+	(text "Wyświetlacz LCD 16x2 sterowany przez magistralę I2C\nAdres: 0x27"
+		(exclude_from_sim no)
+		(at 177.292 117.856 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "67e41811-e63b-4202-92ac-354141f4f22b")
 	)
 	(text "5V"
 		(exclude_from_sim no)
@@ -2501,6 +2531,58 @@
 			)
 		)
 		(uuid "91f3d57f-17fc-404f-a168-10e318d468b6")
+	)
+	(text "Nadajnik:\n- generuje sygnał Morse'a na podstawie przycisku\n- wysyła dane drogą radiową"
+		(exclude_from_sim no)
+		(at 179.324 173.736 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "932c0274-964a-477b-b50e-7fb22c8567c3")
+	)
+	(text "Odbiornik:\n- odbiera sygnał RF\n- dekoduje wiadomość\n- wyświetla na LCD"
+		(exclude_from_sim no)
+		(at 254.254 174.244 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "977d0aa1-5de7-4342-b3e3-b1da20a33458")
+	)
+	(text "Sygnalizacja wysyłanych sygnałów Morse'a"
+		(exclude_from_sim no)
+		(at 124.968 105.41 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "a743148c-603d-447a-afec-7d8f74af6de0")
+	)
+	(text "Transmisja bezprzewodowa 433 Mhz"
+		(exclude_from_sim no)
+		(at 141.478 90.932 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "b8f744ae-c5c2-4ec3-aa6d-6f517c1b38ea")
+	)
+	(text "Sygnalizacja coś tam coś tam"
+		(exclude_from_sim no)
+		(at 155.956 68.58 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "bc3ab0f9-b27c-4390-a2d0-d5a082583b16")
 	)
 	(text "D10"
 		(exclude_from_sim no)
