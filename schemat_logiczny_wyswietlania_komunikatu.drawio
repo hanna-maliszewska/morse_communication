@@ -1,0 +1,43 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Page-1" id="UwY7jl-U3ElYlP_0huoW">
+    <mxGraphModel dx="784" dy="541" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-7" edge="1" parent="1" source="gsKySJjmMu3vhmWGUU8U-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="gsKySJjmMu3vhmWGUU8U-2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-1" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;div&gt;Odebrany znak ASCII&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="365" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-8" edge="1" parent="1" source="gsKySJjmMu3vhmWGUU8U-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="gsKySJjmMu3vhmWGUU8U-5" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-2" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;div&gt;ATmega328P&lt;/div&gt;&lt;div&gt;LCD Driver&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="365" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-10" edge="1" parent="1" source="gsKySJjmMu3vhmWGUU8U-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="gsKySJjmMu3vhmWGUU8U-6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-3" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;div&gt;PCF8574&amp;nbsp;&lt;/div&gt;&lt;div&gt;I/O Expander&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="365" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-4" parent="1" style="whiteSpace=wrap;html=1;" value="&lt;div&gt;LCD1602&lt;/div&gt;&lt;div&gt;HD44780&lt;/div&gt;" vertex="1">
+          <mxGeometry height="60" width="120" x="365" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-9" edge="1" parent="1" source="gsKySJjmMu3vhmWGUU8U-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="gsKySJjmMu3vhmWGUU8U-3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="I2C" vertex="1">
+          <mxGeometry height="30" width="60" x="395" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-11" edge="1" parent="1" source="gsKySJjmMu3vhmWGUU8U-6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="gsKySJjmMu3vhmWGUU8U-4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gsKySJjmMu3vhmWGUU8U-6" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;D4, D5, D6, D7,&lt;/div&gt;&lt;div&gt;RS, E&lt;/div&gt;" vertex="1">
+          <mxGeometry height="30" width="100" x="375" y="370" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
