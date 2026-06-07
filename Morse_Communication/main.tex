@@ -1,0 +1,347 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\geometry{margin=2.5cm}
+
+\title{Radiowy Translator Kodu Morse'a}
+\author{
+AA\\nr indeksu 111
+\and
+BB\\nr indeksu 222
+\and
+CC (Kierownik Projektu)\\nr indeksu 333
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Cel projektu}
+
+Celem projektu jest realizacja systemu transmisji informacji wykorzystującego kod Morse'a oraz komunikację radiową w paśmie 433.92 MHz.
+
+System składa się z dwóch urządzeń:
+
+\begin{itemize}
+\item nadajnika,
+\item odbiornika.
+\end{itemize}
+
+Nadajnik umożliwia wprowadzanie informacji za pomocą przycisku. Informacja jest interpretowana jako kod Morse'a, następnie kodowana i przesyłana drogą radiową.
+
+Odbiornik odbiera komunikat, dekoduje go i prezentuje użytkownikowi w postaci tekstowej oraz dźwiękowej.
+
+\section{Lista funkcjonalności}
+
+\begin{enumerate}
+\item Wprowadzanie znaków kodu Morse'a za pomocą przycisku.
+\item Rozróżnianie kropek i kresek na podstawie czasu przytrzymania.
+\item Dekodowanie kodu Morse'a do znaków alfabetu łacińskiego.
+\item Sygnalizacja świetlna poprawnego przetłumaczenia ciągu znaków.
+\item Regulacja szybkości interpretacji kodu Morse'a.
+\item Transmisja radiowa 433 MHz pomiędzy urządzeniami.
+\item Odbiór komunikatów radiowych.
+\item Wyświetlanie odebranego komunikatu na wyświetlaczu LCD 16x2.
+\item Sygnalizacja akustyczna odebrania komunikatu.
+\item Sygnalizacja świetlna poprawnego odbioru komunikatu.
+\item Zliczanie odebranych komunikatów.
+\end{enumerate}
+
+\section{Podział obowiązków}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{4cm}|p{2cm}|p{7cm}|}
+\hline
+Osoba & Udział & Zakres prac \\
+\hline
+AA & 40\% &
+Projekt sprzętu, montaż układów, testy komunikacji radiowej \\
+\hline
+BB & 30\% &
+Obsługa LCD, dokumentacja, analiza FMEA \\
+\hline
+CC & 30\% &
+Implementacja algorytmów, dekodowanie Morse'a, integracja systemu \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Instrukcja użytkownika}
+
+\begin{enumerate}
+\item Włączyć nadajnik i odbiornik.
+\item Odczekać zakończenie inicjalizacji urządzeń.
+\item Wprowadzać kod Morse'a:
+\begin{itemize}
+\item naciśnięcie krótsze niż 0.3 s oznacza kropkę,
+\item naciśnięcie dłuższe niż 0.3 s oznacza kreskę.
+\end{itemize}
+\item Po zakończeniu litery odczekać około 0.8 s.
+\item Znak zostanie przesłany drogą radiową.
+\item Odebrany znak zostanie wyświetlony na LCD.
+\item Poprawny odbiór zostanie zasygnalizowany diodą LED i buzzerem.
+\item Przyciski SPEED+ i SPEED− umożliwiają zmianę szybkości interpretacji kodu Morse'a.
+\end{enumerate}
+
+\section{Opis sprzętu}
+
+\subsection{Nadajnik}
+
+Mikrokontroler:
+\begin{itemize}
+\item ATmega328PB (Arduino Nano v3)
+\end{itemize}
+
+Elementy:
+\begin{itemize}
+\item przycisk Morse'a,
+\item przycisk zwiększania szybkości,
+\item przycisk zmniejszania szybkości,
+\item dioda LED,
+\item buzzer,
+\item moduł RF FS1000A.
+\end{itemize}
+
+\subsection{Odbiornik}
+
+Mikrokontroler:
+\begin{itemize}
+\item ATmega328PB (Arduino Nano v3)
+\end{itemize}
+
+Elementy:
+\begin{itemize}
+\item odbiornik RF XY-MK,
+\item wyświetlacz LCD1602 z interfejsem I2C,
+\item dioda LED,
+\item buzzer.
+\end{itemize}
+
+\section{Mapowanie funkcjonalności na sprzęt}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+Funkcja & Element sprzętowy \\
+\hline
+Wprowadzanie Morse'a & Przycisk D4 \\
+Regulacja szybkości & SPEED+, SPEED− \\
+Sygnalizacja lokalna & LED + buzzer \\
+Transmisja danych & FS1000A \\
+Odbiór danych & XY-MK \\
+Wyświetlanie danych & LCD1602 \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Opis działania algorytmu}
+
+System oczekuje na naciśnięcie przycisku.
+
+W chwili naciśnięcia zapamiętywany jest czas:
+
+\[
+t_0
+\]
+
+W chwili zwolnienia przycisku zapamiętywany jest czas:
+
+\[
+t_1
+\]
+
+Obliczana jest długość impulsu:
+
+\[
+\\Delta t = t_1 - t_0
+\]
+
+Jeżeli:
+
+\[
+\\Delta t < T_m
+\]
+
+impuls interpretowany jest jako kropka.
+
+Jeżeli:
+
+\[
+\\Delta t \ge T_m
+\]
+
+impuls interpretowany jest jako kreska.
+
+Symbol zostaje zapisany do bufora kodu Morse'a.
+
+Jeżeli czas bezczynności przekroczy 0.8 s, następuje dekodowanie ciągu na znak ASCII.
+
+Znak zostaje przesłany drogą radiową.
+
+Odbiornik odbiera komunikat i prezentuje go użytkownikowi za pomocą wyświetlacza LCD, diody LED oraz buzzera.
+
+\section{Parametry czasowe}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|}
+\hline
+Parametr & Wartość \\
+\hline
+Próg kropka/kreska & 0.3 s \\
+Przerwa kończąca literę & 0.8 s \\
+Napięcie zasilania & 5 V \\
+Częstotliwość MCU & 16 MHz \\
+Częstotliwość RF & 433.92 MHz \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Opis peryferiów i rejestrów}
+
+\subsection{GPIO}
+
+Do obsługi wejść i wyjść cyfrowych wykorzystano rejestry:
+
+\begin{itemize}
+\item DDRD -- konfiguracja kierunku portu,
+\item PORTD -- ustawienie stanu logicznego oraz aktywacja rezystorów podciągających,
+\item PIND -- odczyt aktualnego stanu wejścia.
+\end{itemize}
+
+Przykład konfiguracji:
+
+\begin{verbatim}
+DDRD |= (1<<DDD6);
+\end{verbatim}
+
+Powoduje ustawienie pinu PD6 jako wyjścia.
+
+\subsection{Timer0}
+
+Pomiar czasu realizowany jest przy pomocy sprzętowego licznika Timer0.
+
+Parametry:
+
+\begin{itemize}
+\item częstotliwość zegara: 16 MHz,
+\item preskaler: 64,
+\item rozdzielczość funkcji millis(): 1 ms.
+\end{itemize}
+
+\subsection{I2C (TWI)}
+
+Do komunikacji z wyświetlaczem LCD wykorzystano interfejs TWI.
+
+Wykorzystywane rejestry:
+
+\begin{itemize}
+\item TWBR -- ustalenie prędkości transmisji,
+\item TWCR -- sterowanie transmisją,
+\item TWDR -- rejestr danych,
+\item TWSR -- rejestr statusu.
+\end{itemize}
+
+Prędkość transmisji:
+
+[
+100,kHz
+]
+
+Adres urządzenia:
+
+[
+0x27
+]
+
+\section{Komunikacja radiowa}
+
+Komunikacja realizowana jest przy użyciu transmisji OOK (On-Off Keying) w paśmie 433.92 MHz.
+
+Moduł FS1000A generuje sygnał radiowy odpowiadający transmitowanym bitom.
+
+Stan logiczny 1 reprezentowany jest obecnością nośnej.
+
+Stan logiczny 0 reprezentowany jest brakiem nośnej.
+
+Odbiornik XY-MK demoduluje sygnał i odtwarza przebieg cyfrowy.
+
+\section{FMEA}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{4cm}|c|c|c|c|}
+\hline
+Ryzyko & P & S & D & P$\times$S$\times$D \\
+\hline
+Zablokowany przycisk & 0.2 & 6 & 8 & 9.6 \\
+\hline
+Zakłócenia RF & 0.4 & 8 & 5 & 16 \\
+\hline
+Nieznany kod Morse'a & 0.3 & 3 & 10 & 9 \\
+\hline
+Przepełnienie LCD & 0.5 & 2 & 10 & 10 \\
+\hline
+\end{tabular}
+\end{table}
+
+Najbardziej krytycznym zagrożeniem są zakłócenia transmisji radiowej.
+
+\section{Dokumentacja kodu}
+
+Każda funkcja programu opisywana jest zgodnie ze standardem Doxygen.
+
+Przykład:
+
+\begin{verbatim}
+/*!
+
+* @brief Dekodowanie ciągu Morse'a.
+*
+* @param code Ciąg znaków '.' i '-'.
+*
+* @return Znak ASCII lub '?'.
+  */
+  char DecodeMorse(const char* code);
+  \end{verbatim}
+
+\section{Bibliografia}
+
+\begin{enumerate}
+\item ATmega328P Datasheet.
+\item ATmega328PB Datasheet.
+\item HD44780 LCD Controller Datasheet.
+\item PCF8574 I/O Expander Datasheet.
+\item I2C Bus Specification.
+\item FS1000A RF Transmitter Documentation.
+\item XY-MK RF Receiver Documentation.
+\end{enumerate}
+
+\section{Załączniki}
+
+\begin{itemize}
+\item Schemat nadajnika.
+\item Schemat odbiornika.
+\item Kod źródłowy.
+\item Plik wykonywalny HEX.
+\item Noty katalogowe wykorzystanych elementów.
+\end{itemize}
+
+\end{document}
