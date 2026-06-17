@@ -46,7 +46,7 @@ jobs:
             --force \
             --inline-suppr \
             --xml \
-            $GITHUB_WORKSPACE/kod_zrodlowy \
+            $GITHUB_WORKSPACE \
             2> $GITHUB_WORKSPACE/cppcheck-result.xml
       
       - name: Parse CppCheck results
