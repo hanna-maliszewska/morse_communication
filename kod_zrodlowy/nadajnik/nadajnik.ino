@@ -19,6 +19,9 @@ uint8_t EEPROM_read_byte(uint16_t address);
 void EEPROM_write_uint16(uint16_t address, uint16_t data);
 uint16_t EEPROM_read_uint16(uint16_t address);
 void enterSleepMode(void);
+void WDT_init(void);
+void WDT_off(void);
+void WDT_reset(void);
 
 /* =========================================================================
  * STALE I ZMIENNE GLOBALNE
@@ -32,6 +35,8 @@ static const uint8_t BUZZER_PIN = 2U;
 static const uint8_t LED_BLINK_PIN = 8U;
 
 static const uint16_t EEPROM_ADDR_THRESHOLD = 0x0010U;
+static const uint16_t EEPROM_ADDR_CRASH_CNT = 0x0020U;
+static const uint16_t EEPROM_ADDR_CRASH_FLAG = 0x0021U;
 
 static RCSwitch mySwitch = RCSwitch();
 
@@ -53,6 +58,21 @@ static bool blinkState = false;
  * ========================================================================= */
 
 /*!
+ * @brief    Wektor przerwania awaryjnego zglaszanego przez Watchdog Timer.
+ * @param    Brak (Funkcja sprzetowa ISR)
+ * @returns  Brak (void)
+ * @side effects Zapisuje jedynke do flagi awarii i inkrementuje licznik WDT w EEPROM.
+ */
+ISR(WDT_vect)
+{
+    EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 1U);
+    uint8_t crashCount = EEPROM_read_byte(EEPROM_ADDR_CRASH_CNT);
+    if (crashCount == 0xFFU) { crashCount = 0U; }
+    crashCount++;
+    EEPROM_write_byte(EEPROM_ADDR_CRASH_CNT, crashCount);
+}
+
+/*!
  * @brief    Wektor wybudzenia asynchronicznego (PCINT) dla portu D.
  * @param    Brak (Funkcja sprzetowa ISR)
  * @returns  Brak (void)
@@ -69,10 +89,51 @@ ISR(PCINT2_vect) { }
 ISR(PCINT0_vect) { }
 
 /*!
+ * @brief    Inicjalizuje Watchdog Timer w trybie Interrupt & System Reset na 2 sekundy.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Wylacza i wlacza globalne przerwania na czas sekwencji atomowej.
+ */
+void WDT_init(void)
+{
+    cli(); 
+    WDTCSR |= (uint8_t)((1U << WDCE) | (1U << WDE));
+    WDTCSR = (uint8_t)((1U << WDIE) | (1U << WDE) | (1U << WDP2) | (1U << WDP1) | (1U << WDP0));
+    sei(); 
+}
+
+/*!
+ * @brief    Zatrzymuje sprzętowy licznik Watchdoga przed usypianiem procesora.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Cysci flage WDRF oraz wylacza zasilanie modulu WDT.
+ */
+void WDT_off(void)
+{
+    cli();
+    __asm__ __volatile__ ("wdr");
+    MCUSR &= (uint8_t)(~(1U << WDRF));
+    WDTCSR |= (uint8_t)((1U << WDCE) | (1U << WDE));
+    WDTCSR = 0x00U;
+    sei();
+}
+
+/*!
+ * @brief    Resetuje licznik sprzetowy Watchdoga (karmi psa).
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Wykonuje bezposrednia wstawke asemblerowa 'wdr'.
+ */
+void WDT_reset(void)
+{
+    __asm__ __volatile__ ("wdr");
+}
+
+/*!
  * @brief    Przechodzi w tryb glebokiego uspenia sprzetowego (Power-Down).
  * @param    Brak
  * @returns  Brak (void)
- * @side effects Wymusza gaszenie wyjsc, modyfikuje SMCR, zatrzymuje zegar CPU.
+ * @side effects Wymusza gaszenie wyjsc, zatrzymuje WDT, modyfikuje SMCR, zatrzymuje zegar CPU.
  */
 void enterSleepMode(void)
 {
@@ -99,12 +160,21 @@ void enterSleepMode(void)
     SMCR &= (uint8_t)(~(1U << SM2));
     SMCR |= (uint8_t)(1U << SE); // Sleep enable
 
+    // WYLACZENIE WATCHDOGA NA CZAS SNU
+    WDT_off();
+
     __asm__ __volatile__ ("sleep");
 
-    // --- PROCESOR WYBUDZONY ---
+    // ==========================================
+    // --- PROCESOR WYBUDZONY (Pobudka PCINT) ---
+    // ==========================================
+    
     SMCR &= (uint8_t)(~(1U << SE)); 
     PCICR &= (uint8_t)(~((1U << PCIE2) | (1U << PCIE0)));
     ADCSRA |= (uint8_t)(1U << ADEN);
+
+    // WZNOWIENIE WATCHDOGA PO OBUDZENIU
+    WDT_init();
 
     USART_print("Wznowienie pracy rdzenia!\r\n");
     lastActivityTime = millis();
@@ -224,10 +294,10 @@ void USART_print_uint16(uint16_t num)
 }
 
 /*!
- * @brief    Boot systemu: Inicjuje piny, EEPROM i USART.
+ * @brief    Boot systemu: Inicjuje piny, EEPROM, WDT i USART.
  * @param    Brak
  * @returns  Brak (void)
- * @side effects Zmienia tryby wejscia/wyjscia standardowym pinMode. Reaguje na pamiec EEPROM.
+ * @side effects Zmienia tryby wejscia/wyjscia standardowym pinMode. Sprawdza flage awarii WDT.
  */
 void setup(void)
 {
@@ -243,9 +313,23 @@ void setup(void)
     digitalWrite(BUZZER_PIN, HIGH); // Domyslne wylaczenie Active-Low buzzera
 
     USART_init(103U);
-    mySwitch.enableTransmit(10); 
+    mySwitch.enableTransmit(10U); 
 
-    USART_print("Nadajnik gotowy\r\n");
+    // ODCZYT FLAGI WATCHDOGA PO RESECIE
+    uint8_t crashFlag = EEPROM_read_byte(EEPROM_ADDR_CRASH_FLAG);
+    if (crashFlag == 1U)
+    {
+        uint8_t crashes = EEPROM_read_byte(EEPROM_ADDR_CRASH_CNT);
+        USART_print("\r\n! KRYTYCZNY BLAD: Nadajnik zresetowany przez Watchdog !\r\n");
+        USART_print("Liczba awarii w EEPROM: ");
+        USART_print_uint16((uint16_t)crashes);
+        USART_print("\r\n\r\n");
+        EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 0U); 
+    }
+    else
+    {
+        USART_print("Normalny start systemu. Nadajnik gotowy.\r\n");
+    }
 
     uint16_t savedThreshold = EEPROM_read_uint16(EEPROM_ADDR_THRESHOLD);
     if ((savedThreshold >= 100U) && (savedThreshold <= 1000U))
@@ -260,21 +344,25 @@ void setup(void)
     }
     USART_print_uint16(morseThreshold);
     USART_print(" ms\r\n");
+
+    WDT_init(); // Zabezpieczenie pętli glownej
 }
 
 /*!
  * @brief    Glowna rutyna obslugujaca czas, przyciski, dzwieki i wchodzenie w stan uspienia.
  * @param    Brak
  * @returns  Brak (void)
- * @side effects Analizuje Jitter czlowieka przy probce TRNG z Timera0.
+ * @side effects Analizuje Jitter czlowieka, posiada filtr drgan i resetuje sensory bezczynnosci.
  */
 void loop(void)
 {
+    WDT_reset(); // KARMIENIE PSA W KAZDYM CYKLU PETLI
+    
     uint32_t currentMillis = millis();
 
     handleSpeedButtons();
 
-    // Miganie
+    // Miganie diodą synchronizacji
     if ((currentMillis - lastBlinkTime) >= morseThreshold)
     {
         lastBlinkTime = currentMillis;
@@ -282,10 +370,11 @@ void loop(void)
         digitalWrite(LED_BLINK_PIN, blinkState ? HIGH : LOW);
     }
 
-    // Obsluga buzzera
+    // Obsluga buzzera i resetowanie czasu bezczynnosci
     if (digitalRead(BTN_MORSE) == LOW)
     {
         digitalWrite(BUZZER_PIN, LOW); // Włączenie buzzera
+        lastActivityTime = currentMillis; 
     }
     else
     {
@@ -303,21 +392,25 @@ void loop(void)
         uint32_t duration = currentMillis - pressStart;
         pressed = false;
 
-        if (morseCount < 6U)
+        // Sprzętowy Debouncing (eliminacja drgań styków - min. 30ms)
+        if (duration > 30U) 
         {
-            if (duration < morseThreshold)
+            if (morseCount < 6U)
             {
-                morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 0U);
-                USART_transmit('.');
+                if (duration < morseThreshold)
+                {
+                    morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 0U);
+                    USART_transmit('.');
+                }
+                else
+                {
+                    morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 1U);
+                    USART_transmit('-');
+                }
+                morseCount++;
             }
-            else
-            {
-                morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 1U);
-                USART_transmit('-');
-            }
-            morseCount++;
+            lastInputTime = currentMillis;
         }
-        lastInputTime = currentMillis;
     }
 
     if ((morseCount > 0U) && ((currentMillis - lastInputTime) > 800U) && (!pressed))
@@ -330,7 +423,7 @@ void loop(void)
 
             digitalWrite(LED_PIN, HIGH);
             mySwitch.send(code, 8);
-            delay(100);
+            delay(100U);
             digitalWrite(LED_PIN, LOW);
 
             USART_print(" -> ");
@@ -349,6 +442,8 @@ void loop(void)
     // Odczyt TRNG przyciskiem RANDOM
     if (digitalRead(BTN_RANDOM) == LOW)
     {
+        lastActivityTime = currentMillis; 
+
         if (!randomPressed)
         {
             randomPressed = true;
@@ -367,8 +462,8 @@ void loop(void)
             uint32_t code = (uint32_t)(randomLetter - 'A') + 1U;
 
             digitalWrite(LED_PIN, HIGH);
-            mySwitch.send(code, 8);
-            delay(100);
+            mySwitch.send(code, 8U);
+            delay(100U);
             digitalWrite(LED_PIN, LOW);
         }
     }
@@ -377,7 +472,7 @@ void loop(void)
         randomPressed = false;
     }
     
-    // Usypianie systemu
+    // Usypianie systemu (20 sekund bezczynnosci)
     if ((currentMillis - lastActivityTime) > 20000U)
     {
         enterSleepMode();
@@ -399,6 +494,8 @@ static void handleSpeedButtons(void)
     {
         if (digitalRead(BTN_PLUS) == LOW)
         {
+            lastActivityTime = currentMillis;
+
             if (morseThreshold < 1000U)
             {
                 morseThreshold += 50U;
@@ -411,6 +508,8 @@ static void handleSpeedButtons(void)
         }
         else if (digitalRead(BTN_MINUS) == LOW)
         {
+            lastActivityTime = currentMillis;
+
             if (morseThreshold > 100U)
             {
                 morseThreshold -= 50U;
