@@ -13,7 +13,6 @@ jobs:
     runs-on: ['ubuntu-latest']
     timeout-minutes: 2
     permissions:
-        # only required for workflows in private repositories
         actions: read
         contents: read
 
@@ -46,6 +45,7 @@ jobs:
             --force \
             --inline-suppr \
             --xml \
+            --language=c++ \
             $GITHUB_WORKSPACE \
             2> $GITHUB_WORKSPACE/cppcheck-result.xml
       
