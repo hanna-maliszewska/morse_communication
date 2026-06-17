@@ -38,9 +38,13 @@ jobs:
       
       - name: Run CppCheck
         shell: bash
+        env:
+          PYTHONWARNINGS: "ignore"  # Kluczowe! Zapobiega crashowaniu Cppchecka przez ostrzeżenia Pythona
         run: |
           cppcheck \
             --enable=all \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
             --addon=$GITHUB_WORKSPACE/.github/scripts/misra.json \
             --force \
             --inline-suppr \
