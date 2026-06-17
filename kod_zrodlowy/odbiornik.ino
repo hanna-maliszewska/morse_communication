@@ -2,12 +2,35 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <RCSwitch.h>
+#include <stdlib.h>
+#include <avr/interrupt.h>
 
+/* =========================================================================
+ * PROTOTYPY FUNKCJI (Zgodnosc z MISRA-C)
+ * ========================================================================= */
+void setup(void);
+void loop(void);
+static void showLetter(char letter);
+void USART_init(uint16_t ubrr_value);
+void USART_transmit(char data);
+void USART_print(const char* str);
+void USART_print_uint16(uint16_t num);
+void EEPROM_write_byte(uint16_t address, uint8_t data);
+uint8_t EEPROM_read_byte(uint16_t address);
+void WDT_init(void);
+void WDT_reset(void);
+
+/* =========================================================================
+ * STALE I ZMIENNE GLOBALNE
+ * ========================================================================= */
 static const uint8_t LED_PIN = 6U;
 static const uint8_t BTN_CLEAR_PIN = 8U;
 static const uint8_t LCD_ADDR = 0x27U;
 static const uint8_t LCD_COLS = 16U;
 static const uint8_t LCD_ROWS = 2U;
+
+static const uint16_t EEPROM_ADDR_CRASH_CNT = 0x0020U;
+static const uint16_t EEPROM_ADDR_CRASH_FLAG = 0x0021U;
 
 static LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 static RCSwitch mySwitch = RCSwitch();
@@ -15,59 +38,196 @@ static RCSwitch mySwitch = RCSwitch();
 static uint8_t cursorPos = 0U;
 static uint16_t receivedCount = 0U;
 
-static void showLetter(char letter);
+/* =========================================================================
+ * IMPLEMENTACJA FUNKCJI
+ * ========================================================================= */
 
 /*!
- * @brief    Inicjalizuje piny wejscia/wyjscia, port szeregowy, wyswietlacz LCD oraz modul odbiornika radiowego.
- * @param    brak parametrow
- * brak
- * @returns  brak
- * @side effects:
- * Konfiguruje wyjscia i wejscia mikrokontrolera, inicjalizuje magistrale I2C dla LCD, 
- * uruchamia przerwania zewnetrzne dla nasluchu radiowego.
+ * @brief    Inicjalizuje sprzetowy interfejs USART0.
+ * @param    ubrr_value Wartosc dzielnika czestotliwosci (Baud Rate)
+ * @returns  Brak (void)
+ * @side effects Modyfikuje rejestry UBRR0H, UBRR0L, UCSR0B, UCSR0C. Wlacza pin TXD.
  */
-void setup()
+void USART_init(uint16_t ubrr_value)
 {
-    Serial.begin(9600);
+    UBRR0H = (uint8_t)(ubrr_value >> 8U);
+    UBRR0L = (uint8_t)(ubrr_value);
+    UCSR0B = (1 << TXEN0);
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+/*!
+ * @brief    Wysyla pojedynczy znak ASCII przez interfejs szeregowy.
+ * @param    data Znak bajtowy do transmisji
+ * @returns  Brak (void)
+ * @side effects Oczekuje blokujaco (while) na flage UDRE0 (pusty bufor).
+ */
+void USART_transmit(char data)
+{
+    while ((UCSR0A & (1 << UDRE0)) == 0U) { }
+    UDR0 = (uint8_t)data;
+}
+
+/*!
+ * @brief    Wysyla ciag znakow (string) przez USART.
+ * @param    str Wskaznik na tablice znakow zakonczona '\0'
+ * @returns  Brak (void)
+ * @side effects Kolejkuje znaki uzywajac USART_transmit, blokuje wykonanie na czas transmisji.
+ */
+void USART_print(const char* str)
+{
+    uint32_t i = 0U;
+    while (str[i] != '\0')
+    {
+        USART_transmit(str[i]);
+        i++;
+    }
+}
+
+/*!
+ * @brief    Wysyla liczbe calkowita (16-bit) przez USART w formie tekstu.
+ * @param    num Liczba do konwersji i wyslania
+ * @returns  Brak (void)
+ * @side effects Zuzywa pamiec stosu na lokalny bufor konwersji.
+ */
+void USART_print_uint16(uint16_t num)
+{
+    char buffer[6];
+    utoa(num, buffer, 10);
+    USART_print(buffer);
+}
+
+/*!
+ * @brief    Zapisuje pojedynczy bajt pod wskazany adres w sprzetowej pamieci EEPROM.
+ * @param    address 10-bitowy adres komorki pamieci
+ * @param    data 8-bitowa wartosc do zapisu
+ * @returns  Brak (void)
+ * @side effects Wykonuje atomowa operacje zapisu. Blokuje wykonanie na ~3.4 ms.
+ */
+void EEPROM_write_byte(uint16_t address, uint8_t data)
+{
+    while ((EECR & (1 << EEPE)) != 0U) { }
+    EEAR = address;
+    EEDR = data;
+    EECR |= (1 << EEMPE);
+    EECR |= (1 << EEPE);
+}
+
+/*!
+ * @brief    Odczytuje pojedynczy bajt z pamieci EEPROM.
+ * @param    address 10-bitowy adres komorki pamieci
+ * @returns  Odczytany bajt (uint8_t)
+ * @side effects Czeka na zwolnienie magistrali zapisu przed wyzwoleniem odczytu.
+ */
+uint8_t EEPROM_read_byte(uint16_t address)
+{
+    while ((EECR & (1 << EEPE)) != 0U) { }
+    EEAR = address;
+    EECR |= (1 << EERE);
+    return EEDR;
+}
+
+/*!
+ * @brief    Inicjalizuje Watchdog Timer w trybie Interrupt & System Reset.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Zmienia rejestr WDTCSR.
+ */
+void WDT_init(void)
+{
+    cli(); 
+    WDTCSR |= (uint8_t)((1U << WDCE) | (1U << WDE));
+    WDTCSR = (uint8_t)((1U << WDIE) | (1U << WDE) | (1U << WDP2) | (1U << WDP1) | (1U << WDP0));
+    sei(); 
+}
+
+/*!
+ * @brief    Resetuje licznik sprzetowy Watchdoga (karmi psa).
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Wykonuje bezposrednia wstawke asemblerowa 'wdr'.
+ */
+void WDT_reset(void)
+{
+    __asm__ __volatile__ ("wdr");
+}
+
+/*!
+ * @brief    Wektor przerwania wykonywany ułamek sekundy przed resetem z powodu bledu WDT.
+ * @param    Brak (Funkcja sprzetowa ISR)
+ * @returns  Brak (void)
+ * @side effects Nadpisuje dane awaryjne w EEPROM.
+ */
+ISR(WDT_vect)
+{
+    EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 1U);
+    uint8_t crashCount = EEPROM_read_byte(EEPROM_ADDR_CRASH_CNT);
+    if (crashCount == 0xFFU) { crashCount = 0U; }
+    crashCount++;
+    EEPROM_write_byte(EEPROM_ADDR_CRASH_CNT, crashCount);
+}
+
+/*!
+ * @brief    Inicjalizuje system, peryferia, piny i diagnozuje awarie.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Zmienia stany poczatkowe wejsc/wyjsc, uruchamia I2C.
+ */
+void setup(void)
+{
+    USART_init(103U); // 9600 bodow
+
+    uint8_t crashFlag = EEPROM_read_byte(EEPROM_ADDR_CRASH_FLAG);
+    if (crashFlag == 1U)
+    {
+        uint8_t crashes = EEPROM_read_byte(EEPROM_ADDR_CRASH_CNT);
+        USART_print("! KRYTYCZNY BLAD: Uklad zresetowany przez Watchdog !\r\n");
+        USART_print("Liczba awarii w EEPROM: ");
+        USART_print_uint16((uint16_t)crashes);
+        USART_print("\r\n");
+        EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 0U); 
+    }
+    else
+    {
+        USART_print("Normalny start systemu. Nasluch radiowy gotowy.\r\n");
+    }
 
     pinMode(LED_PIN, OUTPUT);
     pinMode(BTN_CLEAR_PIN, INPUT_PULLUP);
 
     lcd.init();
     lcd.backlight();
-
     lcd.setCursor(0, 0);
     lcd.print("Odbiornik");
 
     mySwitch.enableReceive(0);
-
-    Serial.println("Nasluch...");
+    WDT_init(); 
 }
 
 /*!
- * @brief    Glowna petla programu obslugujaca czyszczenie ekranu przyciskiem oraz odbior wiadomosci radiowych.
- * @param    brak parametrow
- * brak
- * @returns  brak
- * @side effects:
- * Modyfikuje stan wyswietlacza LCD (w tym czysci go), resetuje i inkrementuje licznik 
- * odebranych wiadomosci (receivedCount), zmienia stan diody LED na krotki czas.
+ * @brief    Glowna petla odbierajaca i wyswietlajaca dane.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Obsluguje logike radia i test zawieszenia systemu.
  */
-void loop()
+void loop(void)
 {
+    WDT_reset(); 
+
     if (digitalRead(BTN_CLEAR_PIN) == LOW)
     {
         lcd.clear();
-        
         lcd.setCursor(0, 0);
         lcd.print("Odbiornik");
         
         cursorPos = 0U;
         receivedCount = 0U;
         
-        Serial.println("Ekran i licznik wyczyszczone.");
-        
-        delay(300U); 
+        USART_print("Ekran wyczyszczony. TEST WATCHDOGA - ZAWIAS SYSTEMU...\r\n");
+        while(1)
+        {
+            // Procesor utknął. ISR(WDT_vect) w drodze.
+        }
     }
 
     if (mySwitch.available())
@@ -78,8 +238,9 @@ void loop()
         {
             char letter = (char)('A' + (value - 1U));
 
-            Serial.print("RX: ");
-            Serial.println(letter);
+            USART_print("RX: ");
+            USART_transmit(letter);
+            USART_print("\r\n");
 
             showLetter(letter);
 
@@ -93,19 +254,15 @@ void loop()
             lcd.print(receivedCount);
             lcd.print("      "); 
         }
-
         mySwitch.resetAvailable();
     }
 }
 
 /*!
- * @brief    Wyswietla odebrana litere na dolnym wierszu wyswietlacza LCD i przesuwa kursor.
- * @param    letter
- * Znak do wyswietlenia na ekranie (od 'A' do 'Z').
- * @returns  brak
- * @side effects:
- * Aktualizuje globalna pozycje kursora (cursorPos), nadpisuje wiersz na wyswietlaczu, 
- * zeruje kursor i czysci dolna linie po jej zapelnieniu (czyli osiagnieciu LCD_COLS).
+ * @brief    Wypisuje odkodowana litere na zdefiniowanej pozycji ekranu I2C.
+ * @param    letter Znak ASCII do wyswietlenia
+ * @returns  Brak (void)
+ * @side effects Przesuwa kursor ekranu.
  */
 static void showLetter(char letter)
 {
@@ -117,7 +274,6 @@ static void showLetter(char letter)
     if (cursorPos >= LCD_COLS)
     {
         cursorPos = 0U;
-
         lcd.setCursor(0, 1);
         lcd.print("                ");
     }

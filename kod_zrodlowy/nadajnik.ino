@@ -1,70 +1,280 @@
 #include <Arduino.h>
 #include <RCSwitch.h>
+#include <stdlib.h>
+#include <avr/interrupt.h>
 
+/* =========================================================================
+ * PROTOTYPY FUNKCJI (Zgodnosc z MISRA-C)
+ * ========================================================================= */
+void setup(void);
+void loop(void);
+static void handleSpeedButtons(void);
+static char decodeMorse(uint8_t pattern);
+void USART_init(uint16_t ubrr_value);
+void USART_transmit(char data);
+void USART_print(const char* str);
+void USART_print_uint16(uint16_t num);
+void EEPROM_write_byte(uint16_t address, uint8_t data);
+uint8_t EEPROM_read_byte(uint16_t address);
+void EEPROM_write_uint16(uint16_t address, uint16_t data);
+uint16_t EEPROM_read_uint16(uint16_t address);
+void enterSleepMode(void);
+
+/* =========================================================================
+ * STALE I ZMIENNE GLOBALNE
+ * ========================================================================= */
 static const uint8_t BTN_MORSE = 4U;
 static const uint8_t BTN_PLUS = 5U;
 static const uint8_t BTN_MINUS = 3U;
+static const uint8_t BTN_RANDOM = 11U;
 static const uint8_t LED_PIN = 6U;
 static const uint8_t BUZZER_PIN = 2U;
 static const uint8_t LED_BLINK_PIN = 8U;
 
+static const uint16_t EEPROM_ADDR_THRESHOLD = 0x0010U;
+
 static RCSwitch mySwitch = RCSwitch();
 
+static uint32_t lastActivityTime = 0U;
 static uint32_t pressStart = 0U;
 static bool pressed = false;
+static bool randomPressed = false;
 
 static uint8_t morsePattern = 1U;
 static uint8_t morseCount = 0U;
 
 static uint32_t lastInputTime = 0U;
-static uint16_t morseThreshold = 300U;
+static uint16_t morseThreshold = 300U; 
 static uint32_t lastBlinkTime = 0U;
 static bool blinkState = false;
 
-static void handleSpeedButtons(void);
-static char decodeMorse(uint8_t pattern);
+/* =========================================================================
+ * IMPLEMENTACJA FUNKCJI
+ * ========================================================================= */
 
 /*!
- * @brief    Inicjalizuje piny wejścia/wyjścia, komunikację szeregową oraz moduł nadajnika.
- * @param    brak parametrow
- * brak
- * @returns  brak
- * @side effects:
- * Konfiguruje porty mikrokontrolera, inicjalizuje port szeregowy,
- * uruchamia nadajnik radiowy na zadanym pinie.
+ * @brief    Wektor wybudzenia asynchronicznego (PCINT) dla portu D.
+ * @param    Brak (Funkcja sprzetowa ISR)
+ * @returns  Brak (void)
+ * @side effects Pusta funkcja uzywana wylacznie do wybudzenia rdzenia.
  */
-void setup()
+ISR(PCINT2_vect) { }
+
+/*!
+ * @brief    Wektor wybudzenia asynchronicznego (PCINT) dla portu B.
+ * @param    Brak (Funkcja sprzetowa ISR)
+ * @returns  Brak (void)
+ * @side effects Pusta funkcja uzywana wylacznie do wybudzenia rdzenia.
+ */
+ISR(PCINT0_vect) { }
+
+/*!
+ * @brief    Przechodzi w tryb glebokiego uspenia sprzetowego (Power-Down).
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Wymusza gaszenie wyjsc, modyfikuje SMCR, zatrzymuje zegar CPU.
+ */
+void enterSleepMode(void)
+{
+    USART_print("Brak aktywnosci. Usypianie systemu (Power-down)...\r\n");
+    delay(50U); 
+
+    // --- SPRZATANIE PRZED SNEM (Zwykly digitalWrite) ---
+    digitalWrite(LED_BLINK_PIN, LOW);
+    blinkState = false; 
+    digitalWrite(LED_PIN, LOW);    
+    digitalWrite(BUZZER_PIN, HIGH); 
+    
+    // Wylaczenie ADC
+    ADCSRA &= (uint8_t)(~(1U << ADEN));
+    
+    // Aktywacja PCINT (PORTD i PORTB)
+    PCICR |= (uint8_t)((1U << PCIE2) | (1U << PCIE0));
+    PCMSK2 |= (uint8_t)((1U << PCINT19) | (1U << PCINT20) | (1U << PCINT21));
+    PCMSK0 |= (uint8_t)(1U << PCINT3);
+
+    // SMCR
+    SMCR |= (uint8_t)(1U << SM1);
+    SMCR &= (uint8_t)(~(1U << SM0));
+    SMCR &= (uint8_t)(~(1U << SM2));
+    SMCR |= (uint8_t)(1U << SE); // Sleep enable
+
+    __asm__ __volatile__ ("sleep");
+
+    // --- PROCESOR WYBUDZONY ---
+    SMCR &= (uint8_t)(~(1U << SE)); 
+    PCICR &= (uint8_t)(~((1U << PCIE2) | (1U << PCIE0)));
+    ADCSRA |= (uint8_t)(1U << ADEN);
+
+    USART_print("Wznowienie pracy rdzenia!\r\n");
+    lastActivityTime = millis();
+}
+
+/*!
+ * @brief    Zapisuje pojedynczy bajt w pamieci EEPROM.
+ * @param    address Adres komorki EEPROM
+ * @param    data Bajt do zapisu
+ * @returns  Brak (void)
+ * @side effects Oczekuje w petli while na gotowosc zapisu.
+ */
+void EEPROM_write_byte(uint16_t address, uint8_t data)
+{
+    while ((EECR & (1 << EEPE)) != 0U) { }
+    EEAR = address;
+    EEDR = data;
+    EECR |= (1 << EEMPE);
+    EECR |= (1 << EEPE);
+}
+
+/*!
+ * @brief    Odczytuje bajt danych z pamieci EEPROM.
+ * @param    address Adres komorki do odczytu
+ * @returns  Zwraca pojedynczy bajt (uint8_t)
+ * @side effects Oczekuje blokujaco w petli while.
+ */
+uint8_t EEPROM_read_byte(uint16_t address)
+{
+    while ((EECR & (1 << EEPE)) != 0U) { }
+    EEAR = address;
+    EECR |= (1 << EERE);
+    return EEDR;
+}
+
+/*!
+ * @brief    Zapisuje wartosc 16-bitowa rozbita na dwie komorki EEPROM.
+ * @param    address Poczatkowy adres rejestru
+ * @param    data Wartosc 16-bitowa do zapisu
+ * @returns  Brak (void)
+ * @side effects Nadpisuje dwa sasiednie bajty (address oraz address+1).
+ */
+void EEPROM_write_uint16(uint16_t address, uint16_t data)
+{
+    uint8_t lowByte = (uint8_t)(data & 0xFFU);
+    uint8_t highByte = (uint8_t)((data >> 8U) & 0xFFU);
+    EEPROM_write_byte(address, lowByte);
+    EEPROM_write_byte(address + 1U, highByte);
+}
+
+/*!
+ * @brief    Odczytuje i scala wartosc 16-bitowa z dwoch sasiednich adresow EEPROM.
+ * @param    address Poczatkowy adres odczytu
+ * @returns  Zlozona wartosc (uint16_t)
+ * @side effects Dokonuje operacji bitowego przesuniecia.
+ */
+uint16_t EEPROM_read_uint16(uint16_t address)
+{
+    uint8_t lowByte = EEPROM_read_byte(address);
+    uint8_t highByte = EEPROM_read_byte(address + 1U);
+    return (uint16_t)((uint16_t)lowByte | (uint16_t)((uint16_t)highByte << 8U));
+}
+
+/*!
+ * @brief    Inicjalizuje blok asynchronicznej transmisji USART0.
+ * @param    ubrr_value Dzielnik czestotliwosci procesora dla zadanej predkosci
+ * @returns  Brak (void)
+ * @side effects Przejmuje pin sprzętowy TXD.
+ */
+void USART_init(uint16_t ubrr_value)
+{
+    UBRR0H = (uint8_t)(ubrr_value >> 8U);
+    UBRR0L = (uint8_t)(ubrr_value);
+    UCSR0B = (1 << TXEN0);
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+/*!
+ * @brief    Transmituje natychmiastowo jeden znak do bufora nadawczego.
+ * @param    data 8-bitowy znak ASCII
+ * @returns  Brak (void)
+ * @side effects Wstrzymuje procesor do momentu opróżnienia rejestru przesuwnego (polling).
+ */
+void USART_transmit(char data)
+{
+    while ((UCSR0A & (1 << UDRE0)) == 0U) { }
+    UDR0 = (uint8_t)data;
+}
+
+/*!
+ * @brief    Iteruje i wysyla ciag tekstu.
+ * @param    str Wskaznik bufora Stringa z terminatorem NULL
+ * @returns  Brak (void)
+ * @side effects Wolana wielokrotnie w pętli blokującej.
+ */
+void USART_print(const char* str)
+{
+    uint32_t i = 0U;
+    while (str[i] != '\0')
+    {
+        USART_transmit(str[i]);
+        i++;
+    }
+}
+
+/*!
+ * @brief    Zmienia liczbowa reprezentacje unsigned do stringu na cel wyslania na monitor szeregowy.
+ * @param    num 16-bitowy integer
+ * @returns  Brak (void)
+ * @side effects Tworzy znakowa macierz w ramce stosu.
+ */
+void USART_print_uint16(uint16_t num)
+{
+    char buffer[6];
+    utoa(num, buffer, 10);
+    USART_print(buffer);
+}
+
+/*!
+ * @brief    Boot systemu: Inicjuje piny, EEPROM i USART.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Zmienia tryby wejscia/wyjscia standardowym pinMode. Reaguje na pamiec EEPROM.
+ */
+void setup(void)
 {
     pinMode(BTN_MORSE, INPUT_PULLUP);
     pinMode(BTN_PLUS, INPUT_PULLUP);
     pinMode(BTN_MINUS, INPUT_PULLUP);
+    pinMode(BTN_RANDOM, INPUT_PULLUP);
 
     pinMode(LED_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(LED_BLINK_PIN, OUTPUT);
 
-    Serial.begin(9600);
+    digitalWrite(BUZZER_PIN, HIGH); // Domyslne wylaczenie Active-Low buzzera
 
-    mySwitch.enableTransmit(10);
+    USART_init(103U);
+    mySwitch.enableTransmit(10); 
 
-    Serial.println("Nadajnik gotowy");
+    USART_print("Nadajnik gotowy\r\n");
+
+    uint16_t savedThreshold = EEPROM_read_uint16(EEPROM_ADDR_THRESHOLD);
+    if ((savedThreshold >= 100U) && (savedThreshold <= 1000U))
+    {
+        morseThreshold = savedThreshold;
+        USART_print("Wczytano prog z EEPROM: ");
+    }
+    else
+    {
+        EEPROM_write_uint16(EEPROM_ADDR_THRESHOLD, morseThreshold);
+        USART_print("Czysty EEPROM. Zapisano domyslny prog: ");
+    }
+    USART_print_uint16(morseThreshold);
+    USART_print(" ms\r\n");
 }
 
 /*!
- * @brief    Główna pętla programu. Obsługuje odczyt przycisków, miganie diody oraz dekodowanie i nadawanie znaków Morse'a.
- * @param    brak parametrow
- * brak
- * @returns  brak
- * @side effects:
- * Zmienia stany wyjść mikrokontrolera (diody, buzzer), modyfikuje zmienne globalne
- * dotyczące czasu i bufora, wysyła dane przez moduł radiowy oraz UART.
+ * @brief    Glowna rutyna obslugujaca czas, przyciski, dzwieki i wchodzenie w stan uspienia.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Analizuje Jitter czlowieka przy probce TRNG z Timera0.
  */
-void loop()
+void loop(void)
 {
     uint32_t currentMillis = millis();
 
     handleSpeedButtons();
 
+    // Miganie
     if ((currentMillis - lastBlinkTime) >= morseThreshold)
     {
         lastBlinkTime = currentMillis;
@@ -72,13 +282,14 @@ void loop()
         digitalWrite(LED_BLINK_PIN, blinkState ? HIGH : LOW);
     }
 
+    // Obsluga buzzera
     if (digitalRead(BTN_MORSE) == LOW)
     {
-        digitalWrite(BUZZER_PIN, LOW);
+        digitalWrite(BUZZER_PIN, LOW); // Włączenie buzzera
     }
     else
     {
-        digitalWrite(BUZZER_PIN, HIGH);
+        digitalWrite(BUZZER_PIN, HIGH); // Wyłączenie buzzera
     }
 
     if ((digitalRead(BTN_MORSE) == LOW) && (!pressed))
@@ -86,7 +297,7 @@ void loop()
         pressStart = currentMillis;
         pressed = true;
     }
-
+    
     if ((digitalRead(BTN_MORSE) == HIGH) && (pressed))
     {
         uint32_t duration = currentMillis - pressStart;
@@ -97,16 +308,15 @@ void loop()
             if (duration < morseThreshold)
             {
                 morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 0U);
-                Serial.print(".");
+                USART_transmit('.');
             }
             else
             {
                 morsePattern = (uint8_t)((uint8_t)(morsePattern << 1U) | 1U);
-                Serial.print("-");
+                USART_transmit('-');
             }
             morseCount++;
         }
-
         lastInputTime = currentMillis;
     }
 
@@ -123,27 +333,62 @@ void loop()
             delay(100);
             digitalWrite(LED_PIN, LOW);
 
-            Serial.print(" -> ");
-            Serial.println(letter);
+            USART_print(" -> ");
+            USART_transmit(letter);
+            USART_print("\r\n");
         }
         else
         {
-            Serial.println("Nieznany kod");
+            USART_print("Nieznany kod\r\n");
         }
 
         morseCount = 0U;
         morsePattern = 1U;
     }
+
+    // Odczyt TRNG przyciskiem RANDOM
+    if (digitalRead(BTN_RANDOM) == LOW)
+    {
+        if (!randomPressed)
+        {
+            randomPressed = true;
+            uint8_t hardwareRandomValue = TCNT0; 
+            USART_print("Wygenerowana losowa entropia: ");
+            USART_print_uint16((uint16_t)hardwareRandomValue);
+            USART_print("\r\n");
+            
+            uint8_t offset = (uint8_t)(hardwareRandomValue % 26U);
+            char randomLetter = (char)('A' + offset);
+
+            USART_print("Wylosowano znak: ");
+            USART_transmit(randomLetter);
+            USART_print("\r\n");
+
+            uint32_t code = (uint32_t)(randomLetter - 'A') + 1U;
+
+            digitalWrite(LED_PIN, HIGH);
+            mySwitch.send(code, 8);
+            delay(100);
+            digitalWrite(LED_PIN, LOW);
+        }
+    }
+    else 
+    {
+        randomPressed = false;
+    }
+    
+    // Usypianie systemu
+    if ((currentMillis - lastActivityTime) > 20000U)
+    {
+        enterSleepMode();
+    }
 }
 
 /*!
- * @brief    Odczytuje stan przycisków plus/minus i modyfikuje próg czasowy odróżniający kropkę od kreski.
- * @param    brak parametrow
- * brak
- * @returns  brak
- * @side effects:
- * Modyfikuje wartość globalnej zmiennej morseThreshold.
- * Wysyła aktualną wartość progu na port szeregowy.
+ * @brief    Monitoruje stany przyciskow predkosci do zmiany progu Morse'a z zapisem.
+ * @param    Brak
+ * @returns  Brak (void)
+ * @side effects Zrzuca ustalona wartosc trwale do komorki EEPROM.
  */
 static void handleSpeedButtons(void)
 {
@@ -157,11 +402,11 @@ static void handleSpeedButtons(void)
             if (morseThreshold < 1000U)
             {
                 morseThreshold += 50U;
+                EEPROM_write_uint16(EEPROM_ADDR_THRESHOLD, morseThreshold);
             }
-
-            Serial.print("Prog: ");
-            Serial.println(morseThreshold);
-
+            USART_print("Prog: ");
+            USART_print_uint16(morseThreshold);
+            USART_print("\r\n");
             lastPress = currentMillis;
         }
         else if (digitalRead(BTN_MINUS) == LOW)
@@ -169,32 +414,29 @@ static void handleSpeedButtons(void)
             if (morseThreshold > 100U)
             {
                 morseThreshold -= 50U;
+                EEPROM_write_uint16(EEPROM_ADDR_THRESHOLD, morseThreshold);
             }
-
-            Serial.print("Prog: ");
-            Serial.println(morseThreshold);
-
+            USART_print("Prog: ");
+            USART_print_uint16(morseThreshold);
+            USART_print("\r\n");
             lastPress = currentMillis;
         }
         else
         {
-            /* Intentionally empty */
+            /* Intentionally empty wg MISRA-C */
         }
     }
 }
 
 /*!
- * @brief    Dekoduje liczbowa reprezentacje bitowa znakow Morse'a na odpowiednia litere.
- * @param    pattern
- * Wartosc uint8_t zawierajaca zakodowana sekwencje kropek (0) i kresek (1).
- * @returns  Zdekodowany znak (litery 'A'-'Z') lub znak '?' w przypadku braku dopasowania.
- * @side effects:
- * brak
+ * @brief    Konwertuje wzor bitowy na odpowiednia litere z dekady Morse'a.
+ * @param    pattern Zlozony wzor binarny z kropek(0) i kresek(1).
+ * @returns  Znak ASCII reprezentujacy litere (char).
+ * @side effects Zwraca znak zapytania jezeli uklad jest nierozpoznany.
  */
 static char decodeMorse(uint8_t pattern)
 {
     char result;
-
     switch (pattern)
     {
         case 5U:   result = 'A'; break;
@@ -225,6 +467,5 @@ static char decodeMorse(uint8_t pattern)
         case 28U:  result = 'Z'; break;
         default:   result = '?'; break;
     }
-
     return result;
 }
