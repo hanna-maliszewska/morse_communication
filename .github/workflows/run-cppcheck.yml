@@ -46,7 +46,8 @@ jobs:
             --inline-suppr \
             --xml \
             --language=c++ \
-            $GITHUB_WORKSPACE \
+            $GITHUB_WORKSPACE/kod_zrodlowy/nadajnik.ino \
+            $GITHUB_WORKSPACE/kod_zrodlowy/odbiornik.ino \
             2> $GITHUB_WORKSPACE/cppcheck-result.xml
       
       - name: Parse CppCheck results
