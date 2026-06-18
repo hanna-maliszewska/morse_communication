@@ -25,7 +25,6 @@ jobs:
         run: |
           sudo apt-get install cppcheck
           cppcheck --version
-          # AUTOMATYCZNY PATCH: Podmieniamy codecs.open na open, aby uciszyć błąd nowego Pythona
           sudo sed -i 's/codecs.open/open/g' /usr/lib/x86_64-linux-gnu/cppcheck/addons/misra.py
       
       - name: Set up Python
