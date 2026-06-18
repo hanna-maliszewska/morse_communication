@@ -25,9 +25,10 @@ void WDT_reset(void);
  * ========================================================================= */
 static const uint8_t LED_PIN = 6U;
 static const uint8_t BTN_CLEAR_PIN = 8U;
-static const uint8_t LCD_ADDR = 0x27U;
-static const uint8_t LCD_COLS = 16U;
-static const uint8_t LCD_ROWS = 2U;
+
+#define LCD_ADDR 0x27U
+#define LCD_COLS 16U
+#define LCD_ROWS 2U
 
 static const uint16_t EEPROM_ADDR_CRASH_CNT = 0x0020U;
 static const uint16_t EEPROM_ADDR_CRASH_FLAG = 0x0021U;
@@ -36,7 +37,6 @@ static LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
 static RCSwitch mySwitch = RCSwitch();
 
 static uint8_t cursorPos = 0U;
-static uint16_t receivedCount = 0U;
 
 /* =========================================================================
  * IMPLEMENTACJA FUNKCJI
@@ -158,6 +158,8 @@ void WDT_reset(void)
  * @returns  Brak (void)
  * @side effects Nadpisuje dane awaryjne w EEPROM.
  */
+// cppcheck-suppress misra-c2012-2.7
+// cppcheck-suppress misra-c2012-8.2
 ISR(WDT_vect)
 {
     EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 1U);
@@ -212,6 +214,8 @@ void setup(void)
  */
 void loop(void)
 {
+    static uint16_t receivedCount = 0U;
+
     WDT_reset(); 
 
     if (digitalRead(BTN_CLEAR_PIN) == LOW)
@@ -236,7 +240,11 @@ void loop(void)
 
         if ((value >= 1U) && (value <= 26U))
         {
-            char letter = (char)('A' + (value - 1U));
+            static const char alphabet[26] = {
+                'A','B','C','D','E','F','G','H','I','J','K','L','M',
+                'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'
+            };
+            char letter = alphabet[value - 1U];
 
             USART_print("RX: ");
             USART_transmit(letter);
@@ -262,7 +270,7 @@ void loop(void)
  * @brief    Wypisuje odkodowana litere na zdefiniowanej pozycji ekranu I2C.
  * @param    letter Znak ASCII do wyswietlenia
  * @returns  Brak (void)
- * @side effects Przesuwa kursor ekranu.
+ * @side effects Przesuwa kursor ekranu. Nadpisuje dolny wiersz ekranu po zapelnieniu.
  */
 static void showLetter(char letter)
 {
