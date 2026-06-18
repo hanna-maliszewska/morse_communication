@@ -41,16 +41,7 @@ static const uint16_t EEPROM_ADDR_CRASH_FLAG = 0x0021U;
 static RCSwitch mySwitch = RCSwitch();
 
 static uint32_t lastActivityTime = 0U;
-static uint32_t pressStart = 0U;
-static bool pressed = false;
-static bool randomPressed = false;
-
-static uint8_t morsePattern = 1U;
-static uint8_t morseCount = 0U;
-
-static uint32_t lastInputTime = 0U;
 static uint16_t morseThreshold = 300U; 
-static uint32_t lastBlinkTime = 0U;
 static bool blinkState = false;
 
 /* =========================================================================
@@ -63,6 +54,8 @@ static bool blinkState = false;
  * @returns  Brak (void)
  * @side effects Zapisuje jedynke do flagi awarii i inkrementuje licznik WDT w EEPROM.
  */
+// cppcheck-suppress misra-c2012-2.7
+// cppcheck-suppress misra-c2012-8.2
 ISR(WDT_vect)
 {
     EEPROM_write_byte(EEPROM_ADDR_CRASH_FLAG, 1U);
@@ -78,6 +71,8 @@ ISR(WDT_vect)
  * @returns  Brak (void)
  * @side effects Pusta funkcja uzywana wylacznie do wybudzenia rdzenia.
  */
+// cppcheck-suppress misra-c2012-2.7
+// cppcheck-suppress misra-c2012-8.2
 ISR(PCINT2_vect) { }
 
 /*!
@@ -86,6 +81,8 @@ ISR(PCINT2_vect) { }
  * @returns  Brak (void)
  * @side effects Pusta funkcja uzywana wylacznie do wybudzenia rdzenia.
  */
+// cppcheck-suppress misra-c2012-2.7
+// cppcheck-suppress misra-c2012-8.2
 ISR(PCINT0_vect) { }
 
 /*!
@@ -140,7 +137,7 @@ void enterSleepMode(void)
     USART_print("Brak aktywnosci. Usypianie systemu (Power-down)...\r\n");
     delay(50U); 
 
-    // --- SPRZATANIE PRZED SNEM (Zwykly digitalWrite) ---
+    // --- SPRZATANIE PRZED SNEM ---
     digitalWrite(LED_BLINK_PIN, LOW);
     blinkState = false; 
     digitalWrite(LED_PIN, LOW);    
@@ -356,6 +353,14 @@ void setup(void)
  */
 void loop(void)
 {
+    static uint32_t pressStart = 0U;
+    static bool pressed = false;
+    static bool randomPressed = false;
+    static uint8_t morsePattern = 1U;
+    static uint8_t morseCount = 0U;
+    static uint32_t lastInputTime = 0U;
+    static uint32_t lastBlinkTime = 0U;
+
     WDT_reset(); // KARMIENIE PSA W KAZDYM CYKLU PETLI
     
     uint32_t currentMillis = millis();
@@ -419,10 +424,10 @@ void loop(void)
 
         if ((letter >= 'A') && (letter <= 'Z'))
         {
-            uint32_t code = (uint32_t)(letter - 'A') + 1U;
+            uint32_t code = ((uint32_t)letter - (uint32_t)'A') + 1U;
 
             digitalWrite(LED_PIN, HIGH);
-            mySwitch.send(code, 8);
+            mySwitch.send(code, 8U);
             delay(100U);
             digitalWrite(LED_PIN, LOW);
 
@@ -453,13 +458,17 @@ void loop(void)
             USART_print("\r\n");
             
             uint8_t offset = (uint8_t)(hardwareRandomValue % 26U);
-            char randomLetter = (char)('A' + offset);
+            static const char alphabet[26] = {
+                'A','B','C','D','E','F','G','H','I','J','K','L','M',
+                'N','O','P','Q','R','S','T','U','V','W','X','Y','Z'
+            };
+            char randomLetter = alphabet[offset];
 
             USART_print("Wylosowano znak: ");
             USART_transmit(randomLetter);
             USART_print("\r\n");
 
-            uint32_t code = (uint32_t)(randomLetter - 'A') + 1U;
+            uint32_t code = (uint32_t)offset + 1U;
 
             digitalWrite(LED_PIN, HIGH);
             mySwitch.send(code, 8U);
