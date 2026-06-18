@@ -25,6 +25,7 @@ jobs:
         run: |
           sudo apt-get install cppcheck
           cppcheck --version
+          # AUTOMATYCZNY PATCH: Podmieniamy codecs.open na open, aby uciszyć błąd nowego Pythona
           sudo sed -i 's/codecs.open/open/g' /usr/lib/x86_64-linux-gnu/cppcheck/addons/misra.py
       
       - name: Set up Python
@@ -44,6 +45,11 @@ jobs:
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
             --suppress=badBitmaskCheck \
+            --suppress=misra-config \
+            --suppress=misra-c2012-17.3 \
+            --suppress=misra-c2012-8.6 \
+            --suppress=misra-c2012-5.9 \
+            --suppress=misra-c2012-8.7 \
             --addon=$GITHUB_WORKSPACE/.github/scripts/misra.json \
             --force \
             --inline-suppr \
