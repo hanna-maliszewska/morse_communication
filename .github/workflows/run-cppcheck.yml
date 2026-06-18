@@ -57,6 +57,7 @@ jobs:
             --language=c++ \
             $GITHUB_WORKSPACE/kod_zrodlowy/nadajnik/nadajnik.ino \
             $GITHUB_WORKSPACE/kod_zrodlowy/odbiornik/odbiornik.ino \
+            $GITHUB_WORKSPACE/kod_zrodlowy/odbiornikWDTtest/odbiornikWDTtest.ino \
             2> $GITHUB_WORKSPACE/cppcheck-result.xml
       
       - name: Parse CppCheck results
