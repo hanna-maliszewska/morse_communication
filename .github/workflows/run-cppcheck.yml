@@ -38,8 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install lxml
       
-      - name: Run CppCheck
-        shell: bash
+      - name: Run cppcheck
         run: |
           cppcheck \
             --enable=all \
@@ -51,8 +50,8 @@ jobs:
             --inline-suppr \
             --xml \
             --language=c++ \
-            $GITHUB_WORKSPACE/kod_zrodlowy/nadajnik.ino \
-            $GITHUB_WORKSPACE/kod_zrodlowy/odbiornik.ino \
+            $GITHUB_WORKSPACE/kod_zrodlowy/nadajnik/nadajnik.ino \
+            $GITHUB_WORKSPACE/kod_zrodlowy/odbiornik/odbiornik.ino \
             2> $GITHUB_WORKSPACE/cppcheck-result.xml
       
       - name: Parse CppCheck results
